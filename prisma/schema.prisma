@@ -1,0 +1,307 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id                    String                 @id @default(cuid())
+  name                  String?
+  email                 String                 @unique
+  emailVerified         DateTime?
+  balance               Float                  @default(5000) // Default balance of $5000
+  phone                 String?                @unique
+  phoneVerified         DateTime?
+  image                 String?
+  password              String?
+  role                  String                 @default("USER") // USER, ADMIN
+  status                String                 @default("ACTIVE") // ACTIVE, INACTIVE, SUSPENDED
+  lockedUntil           DateTime?
+  publicKey             String?                @db.Text
+  encryptedPrivateKey   String?                @db.Text
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  accounts              Account[]
+  sessions              Session[]
+  posts                 Post[]
+  comments              Comment[]
+  likes                 Like[]
+  followers             Follow[]               @relation("Following")
+  following             Follow[]               @relation("Follower")
+  products              Product[]
+  orders                Order[]                @relation("BuyerOrders")
+  sellerOrders          Order[]                @relation("SellerOrders")
+  conversations         ConversationUser[]
+  messages              Message[]
+  reports               Report[]               @relation("Reporter")
+  reportedUser          Report[]               @relation("ReportedUser")
+  notifications         Notification[]
+  securityLogs          SecurityLog[]
+  passwordResets        PasswordReset[]
+  conversationsCreated  Conversation[]
+  reportedProducts      Report[]               @relation("ReportedProduct")
+  reportedMessages      Report[]               @relation("ReportedMessage")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Post {
+  id        String    @id @default(cuid())
+  content   String
+  image     String?
+  authorId  String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments  Comment[]
+  likes     Like[]
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String
+  postId    String
+  authorId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+}
+
+model Like {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+}
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+  follower    User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+}
+
+model Product {
+  id          String        @id @default(cuid())
+  title       String
+  description String
+  price       Float
+  condition   String // NEW, LIKE_NEW, GOOD, FAIR, POOR
+  status      String        @default("ACTIVE") // ACTIVE, SOLD, DELETED
+  sellerId    String
+  categoryId  String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  seller      User          @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  category    Category      @relation(fields: [categoryId], references: [id])
+  images      ProductImage[]
+  orders      Order[]
+  reports     Report[]      @relation("ReportedProduct")
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  url       String
+  isPrimary Boolean  @default(false)
+  productId String
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model Order {
+  id              String   @id @default(cuid())
+  productId       String
+  buyerId         String
+  sellerId        String
+  quantity        Int      @default(1)
+  totalPrice      Float
+  status          String // PENDING, PAID, SHIPPED, DELIVERED, CANCELLED
+  stripeSessionId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  product         Product  @relation(fields: [productId], references: [id])
+  buyer           User     @relation("BuyerOrders", fields: [buyerId], references: [id])
+  seller          User     @relation("SellerOrders", fields: [sellerId], references: [id])
+}
+
+model Conversation {
+  id           String             @id @default(cuid())
+  name         String?
+  isGroup      Boolean            @default(false)
+  image        String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  creatorId    String
+  creator      User               @relation(fields: [creatorId], references: [id])
+  participants ConversationUser[]
+  messages     Message[]
+  adminIds     String[]           @default([])  // List of user IDs who are admins in the group
+}
+
+model ConversationUser {
+  id                  String       @id @default(cuid())
+  userId              String
+  conversationId      String
+  encryptedSessionKey String?      @db.Text
+  role                String       @default("MEMBER") // MEMBER, ADMIN, OWNER
+  joinedAt            DateTime     @default(now())
+  lastReadMessageId   String?
+  createdAt           DateTime     @default(now())
+  user                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation        Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, conversationId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  content        String       @db.Text
+  encrypted      Boolean      @default(false)
+  conversationId String
+  senderId       String
+  isEphemeral    Boolean      @default(false)
+  expiresAt      DateTime?
+  signature      String?      @db.Text
+  previousHash   String?      @db.Text
+  hash           String?      @db.Text
+  timestamp      DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  attachments    Attachment[]
+  reports        Report[]     @relation("ReportedMessage")
+}
+
+model Attachment {
+  id        String   @id @default(cuid())
+  type      String // image, video, audio, document
+  url       String
+  name      String?
+  size      Int?
+  messageId String
+  createdAt DateTime @default(now())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+}
+
+model Report {
+  id                String    @id @default(cuid())
+  type              String // USER, PRODUCT, MESSAGE
+  reason            String
+  status            String    @default("PENDING") // PENDING, RESOLVED, REJECTED
+  reporterId        String
+  reportedUserId    String?
+  reportedProductId String?
+  reportedMessageId String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  reporter          User      @relation("Reporter", fields: [reporterId], references: [id])
+  reportedUser      User?     @relation("ReportedUser", fields: [reportedUserId], references: [id])
+  reportedProduct   Product?  @relation("ReportedProduct", fields: [reportedProductId], references: [id])
+  reportedMessage   Message?  @relation("ReportedMessage", fields: [reportedMessageId], references: [id])
+
+  // **Inverse Relations for User Model**
+  reportedByUsers   User[]    @relation("ReportedProduct")
+  reportedByMessages User[]   @relation("ReportedMessage")
+}
+
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String // NEW_MESSAGE, NEW_FOLLOWER, POST_LIKED, POST_COMMENTED, ORDER_RECEIVED, etc.
+  content     String
+  read        Boolean  @default(false)
+  referenceId String? // ID of the related entity (post, message, etc.)
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OTP {
+  id        String    @id @default(cuid())
+  type      String // EMAIL, PHONE
+  email     String?
+  phone     String?
+  code      String
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+}
+
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  token     String
+  used      Boolean   @default(false)
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SecurityLog {
+  id        String   @id @default(cuid())
+  eventType String
+  userId    String?
+  ipAddress String
+  userAgent String
+  details   String   @db.Text
+  severity  String // INFO, LOW, MEDIUM, HIGH, CRITICAL, WARNING
+  timestamp DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
